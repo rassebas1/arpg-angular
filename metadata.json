@@ -1,0 +1,5 @@
+{
+  "name": "Project Abyss",
+  "description": "A high-performance, browser-based ARPG with isometric camera, click-to-move mechanics, and procedural loot systems.",
+  "requestFramePermissions": []
+}
