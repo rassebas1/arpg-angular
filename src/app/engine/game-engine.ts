@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import Stats from 'stats.js';
 import { Enemy, EnemyType, StatusEffectType } from './enemy';
-import { Item, ItemSlot, WeaponType, Rarity, ItemStats, LootManager, CraftingMaterial } from './items';
+import { Item, ItemSlot, WeaponType, Rarity, ItemStats, LootManager, CraftingMaterial, ITEM_SETS } from './items';
 import { SKILL_REGISTRY } from './skills';
 import { AssetService } from './asset-service';
 import { DungeonGenerator, TileType, Room } from './dungeon-generator';
@@ -33,6 +33,7 @@ export interface CharacterStats {
   attackSpeed: number;
   castSpeed: number;
   lifeRegeneration: number;
+  manaRegeneration: number;
   lifeLeechAttack: number;
   lifeLeechSpell: number;
   fireResistance: number;
@@ -40,6 +41,8 @@ export interface CharacterStats {
   iceResistance: number;
   poisonResistance: number;
   maxLifeLeechRate: number;
+  blockChance: number;
+  evasion: number;
 }
 
 @Injectable({
@@ -65,8 +68,7 @@ export class GameEngine {
   public interactablesSignal = signal<Interactable[]>([]);
   private targetPosition: THREE.Vector3 | null = null;
   private cursorPosition: THREE.Vector3 | null = null;
-  private lastAttackTime = 0;
-  private lastCastTime = 0;
+  private lastCastTimes = [0, 0, 0, 0, 0];
   private envColliders: RAPIER.Collider[] = [];
   
   private playerMixer?: THREE.AnimationMixer;
@@ -91,18 +93,70 @@ export class GameEngine {
   
   // UI Data (Juice & Survival)
   public playerHealth = signal<number>(100);
+  public playerMana = signal<number>(100);
+  public activeBuffs = signal<{ blockChance: number, evadeChance: number, blockExpire: number, evadeExpire: number }>({ blockChance: 0, evadeChance: 0, blockExpire: 0, evadeExpire: 0 });
   public damageNumbers = signal<{id: string, text: string, x: number, y: number, color: string, opacity: number}[]>([]);
   private activeDamageNumbers: {id: string, text: string, pos: THREE.Vector3, color: string, life: number, maxLife: number}[] = [];
   private activeLeeches: { amountPerSec: number, remainingTime: number }[] = [];
   public enemyUI = signal<{id: string, x: number, y: number, hpPercent: number, effects: {type: string, duration: number}[]}[]>([]);
 
-  public activeAttack = signal<string>('strike');
-  public activeSpell = signal<string>('fireball');
-  public attackCooldownProgress = signal<number>(0);
-  public spellCooldownProgress = signal<number>(0);
+  public activeSkills = signal<(string | null)[]>(['strike', 'fireball', null, null, null]);
+  public skillCooldownsProgress = signal<number[]>([1, 1, 1, 1, 1]);
   public linkedSupports = signal<Record<string, string[]>>({
     'strike': [], 'cleave': [], 'leap': [], 'fireball': [], 'nova': [], 'arc': []
   });
+
+  public getSkillTooltipStats(skillId: string) {
+    const baseSkill = SKILL_REGISTRY[skillId];
+    if (!baseSkill) return null;
+
+    const playerStats = this.derivedStats();
+    const links = this.linkedSupports()[skillId] || [];
+    
+    let damage = baseSkill.baseDamage;
+    let cooldown = baseSkill.baseCooldown;
+    let aoe = baseSkill.baseAoe || 1;
+    let projectiles = baseSkill.baseProjectiles || 1;
+    
+    let scalingSource = '';
+    let scalingValue = 0;
+
+    // Apply player stats scaling
+    if (baseSkill.category === 'attack') {
+      scalingSource = 'ATK';
+      scalingValue = playerStats.attack;
+      damage += playerStats.attack;
+      cooldown /= playerStats.attackSpeed || 1;
+    } else if (baseSkill.category === 'spell') {
+      scalingSource = 'INT';
+      scalingValue = playerStats.intelligence * 2;
+      damage += playerStats.intelligence * 2;
+      cooldown /= playerStats.castSpeed || 1;
+    }
+    
+    // Apply support gems
+    for (const supportId of links) {
+      const support = SKILL_REGISTRY[supportId];
+      if (support && support.supportEffects) {
+        if (support.supportEffects.damageMultiplier) damage *= support.supportEffects.damageMultiplier;
+        if (support.supportEffects.cooldownMultiplier) cooldown *= support.supportEffects.cooldownMultiplier;
+        if (support.supportEffects.aoeMultiplier) aoe *= support.supportEffects.aoeMultiplier;
+        if (support.supportEffects.projectiles) projectiles += support.supportEffects.projectiles;
+      }
+    }
+    
+    return {
+      damage,
+      cooldown,
+      aoe,
+      projectiles,
+      manaCost: baseSkill.baseManaCost || 0,
+      critChance: playerStats.critChance,
+      critDamage: playerStats.critDamage,
+      scalingSource,
+      scalingValue
+    };
+  }
 
   public getSkillStats(skillId: string) {
     const baseSkill = SKILL_REGISTRY[skillId];
@@ -146,6 +200,7 @@ export class GameEngine {
       cooldown,
       aoe,
       projectiles,
+      manaCost: baseSkill.baseManaCost || 0,
       isCrit
     };
   }
@@ -164,6 +219,7 @@ export class GameEngine {
   public inventory = signal<Item[]>([]);
   public chest = signal<Item[]>([]);
   public equipped = signal<Partial<Record<ItemSlot, Item>>>({});
+  public potions = signal<(Item | null)[]>([null, null, null, null]);
   public gold = signal<number>(0);
   public materials = signal<Record<CraftingMaterial, number>>({
     [CraftingMaterial.DUST]: 0,
@@ -191,13 +247,16 @@ export class GameEngine {
     attackSpeed: 1.0, // 1 attack per second base
     castSpeed: 1.0, // 1 cast per second base
     lifeRegeneration: 0,
+    manaRegeneration: 0,
     lifeLeechAttack: 0,
     lifeLeechSpell: 0,
     fireResistance: 0,
     lightningResistance: 0,
     iceResistance: 0,
     poisonResistance: 0,
-    maxLifeLeechRate: 10
+    maxLifeLeechRate: 10,
+    blockChance: 0,
+    evasion: 0
   });
 
   public derivedStats = computed(() => {
@@ -222,9 +281,24 @@ export class GameEngine {
     let bonusLightningRes = 0;
     let bonusIceRes = 0;
     let bonusPoisonRes = 0;
+    let bonusBlockChance = 0;
+    let bonusEvasion = 0;
+    let bonusManaRegen = 0;
+    let bonusMaxHealth = 0;
+
+    const buffs = this.activeBuffs();
+    const now = Date.now();
+    if (now < buffs.blockExpire) bonusBlockChance += buffs.blockChance;
+    if (now < buffs.evadeExpire) bonusEvasion += buffs.evadeChance;
+    
+    // Count Set Pieces
+    const setCounts: Record<string, number> = {};
 
     Object.values(equip).forEach(item => {
       if (item) {
+        if (item.setId) {
+          setCounts[item.setId] = (setCounts[item.setId] || 0) + 1;
+        }
         bonusAttack += item.stats.attack || 0;
         bonusDefense += item.stats.defense || 0;
         bonusSpeed += item.stats.speed || 0;
@@ -237,14 +311,51 @@ export class GameEngine {
         bonusAttackSpeed += item.stats.attackSpeed || 0;
         bonusCastSpeed += item.stats.castSpeed || 0;
         bonusLifeRegen += item.stats.lifeRegeneration || 0;
+        bonusManaRegen += item.stats.manaRegeneration || 0;
         bonusLifeLeechAttack += item.stats.lifeLeechAttack || 0;
         bonusLifeLeechSpell += item.stats.lifeLeechSpell || 0;
         bonusFireRes += item.stats.fireResistance || 0;
         bonusLightningRes += item.stats.lightningResistance || 0;
         bonusIceRes += item.stats.iceResistance || 0;
         bonusPoisonRes += item.stats.poisonResistance || 0;
+        bonusBlockChance += item.stats.blockChance || 0;
+        bonusEvasion += item.stats.evasion || 0;
+        bonusMaxHealth += item.stats.maxHealth || 0;
       }
     });
+
+    // Apply Set Bonuses
+    for (const [setId, count] of Object.entries(setCounts)) {
+      const setDef = ITEM_SETS[setId];
+      if (setDef) {
+        for (const bonus of setDef.bonuses) {
+          if (count >= bonus.piecesRequired) {
+            bonusAttack += bonus.stats.attack || 0;
+            bonusDefense += bonus.stats.defense || 0;
+            bonusSpeed += bonus.stats.speed || 0;
+            bonusInt += bonus.stats.intelligence || 0;
+            bonusStr += bonus.stats.strength || 0;
+            bonusDex += bonus.stats.dexterity || 0;
+            bonusVit += bonus.stats.vitality || 0;
+            bonusCritChance += bonus.stats.critChance || 0;
+            bonusCritDamage += bonus.stats.critDamage || 0;
+            bonusAttackSpeed += bonus.stats.attackSpeed || 0;
+            bonusCastSpeed += bonus.stats.castSpeed || 0;
+            bonusLifeRegen += bonus.stats.lifeRegeneration || 0;
+            bonusManaRegen += bonus.stats.manaRegeneration || 0;
+            bonusLifeLeechAttack += bonus.stats.lifeLeechAttack || 0;
+            bonusLifeLeechSpell += bonus.stats.lifeLeechSpell || 0;
+            bonusFireRes += bonus.stats.fireResistance || 0;
+            bonusLightningRes += bonus.stats.lightningResistance || 0;
+            bonusIceRes += bonus.stats.iceResistance || 0;
+            bonusPoisonRes += bonus.stats.poisonResistance || 0;
+            bonusBlockChance += bonus.stats.blockChance || 0;
+            bonusEvasion += bonus.stats.evasion || 0;
+            bonusMaxHealth += bonus.stats.maxHealth || 0;
+          }
+        }
+      }
+    }
 
     // Weapon specific base attack speed
     let baseWeaponAttackSpeed = base.attackSpeed;
@@ -310,23 +421,30 @@ export class GameEngine {
       attack: (finalStr * 2 + bonusAttack) * passiveDamageMult,
       defense: finalVit + bonusDefense,
       speed: (base.speed + (finalDex / 10) + bonusSpeed) * passiveMovementSpeedMult,
-      maxHealth: (finalVit * 10) * passiveMaxHealthMult,
+      maxHealth: ((finalVit * 10) + bonusMaxHealth) * passiveMaxHealthMult,
       critChance: base.critChance + bonusCritChance + (finalDex / 5) + passiveCritChance,
       critDamage: base.critDamage + bonusCritDamage + (finalStr / 2) + passiveCritDamage,
       attackSpeed: baseWeaponAttackSpeed * (1 + (bonusAttackSpeed / 100)) * passiveAttackSpeedMult,
       castSpeed: base.castSpeed * (1 + (bonusCastSpeed / 100)) * passiveAttackSpeedMult, // Assuming attack speed mult affects cast speed too for simplicity
       lifeRegeneration: bonusLifeRegen,
+      manaRegeneration: bonusManaRegen + (finalInt * 0.5), // Int adds to mana regeneration flat amount
       lifeLeechAttack: bonusLifeLeechAttack,
       lifeLeechSpell: bonusLifeLeechSpell,
       fireResistance: bonusFireRes,
       lightningResistance: bonusLightningRes,
       iceResistance: bonusIceRes,
       poisonResistance: bonusPoisonRes,
-      maxLifeLeechRate: base.maxLifeLeechRate
+      maxLifeLeechRate: base.maxLifeLeechRate,
+      blockChance: Math.min(70, base.blockChance + bonusBlockChance),
+      evasion: Math.min(70, base.evasion + bonusEvasion)
     };
   });
 
   private isInitialized = false;
+
+  public playerPos3D(): THREE.Vector3 {
+    return this.player.position.clone().add(new THREE.Vector3(0, 2.5, 0));
+  }
 
   async init(container: ElementRef<HTMLDivElement>) {
     if (this.isInitialized || !isPlatformBrowser(this.platformId)) return;
@@ -405,12 +523,11 @@ export class GameEngine {
 
   private onKeyDown(event: KeyboardEvent) {
     if (this.gameState() !== 'playing') return;
-    if (event.code === 'Space') {
-      this.attack();
-    }
-    if (event.code === 'Digit1') {
-      this.castSpell();
-    }
+    if (event.code === 'Space') this.useSkill(0);
+    if (event.code === 'KeyQ') this.useSkill(1);
+    if (event.code === 'KeyW') this.useSkill(2);
+    if (event.code === 'KeyE') this.useSkill(3);
+    if (event.code === 'KeyR') this.useSkill(4);
   }
 
   public equipItem(item: Item) {
@@ -521,12 +638,31 @@ export class GameEngine {
     }
   }
 
-  private castSpell() {
-    const skillId = this.activeSpell();
+  private useSkill(slotIdx: number) {
+    const skillId = this.activeSkills()[slotIdx];
+    if (!skillId) return;
+    const baseSkill = SKILL_REGISTRY[skillId];
+    if (baseSkill.category === 'attack') {
+      this.executeAttack(skillId, slotIdx);
+    } else {
+      this.executeSpell(skillId, slotIdx);
+    }
+  }
+
+  private executeSpell(skillId: string, slotIdx: number) {
+
     const stats = this.getSkillStats(skillId);
     const now = Date.now();
-    if (now - this.lastCastTime < stats.cooldown * 1000) return;
-    this.lastCastTime = now;
+    if (now - this.lastCastTimes[slotIdx] < stats.cooldown * 1000) return;
+    
+    const manaCost = stats.manaCost;
+    if (this.playerMana() < manaCost) {
+      this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2, 0)), 'OUT OF MANA', '#4444ff');
+      return;
+    }
+    
+    this.playerMana.update(m => Math.max(0, m - manaCost));
+    this.lastCastTimes[slotIdx] = now;
 
     // Animation
     if (this.activeAction !== this.playerActionIdle) {
@@ -711,12 +847,11 @@ export class GameEngine {
     }
   }
 
-  private attack() {
-    const skillId = this.activeAttack();
+  private executeAttack(skillId: string, slotIdx: number) {
     const stats = this.getSkillStats(skillId);
     const now = Date.now();
-    if (now - this.lastAttackTime < stats.cooldown * 1000) return;
-    this.lastAttackTime = now;
+    if (now - this.lastCastTimes[slotIdx] < stats.cooldown * 1000) return;
+    this.lastCastTimes[slotIdx] = now;
 
     const playerPos = this.player.position.clone();
     let playerDir = new THREE.Vector3(0, 0, 1).applyQuaternion(this.player.quaternion);
@@ -1090,7 +1225,7 @@ export class GameEngine {
     const portalGeom = new THREE.TorusGeometry(2, 0.2, 8, 16);
     const portalMat = new THREE.MeshStandardMaterial({ color: 0xaa00ff, emissive: 0xaa00ff });
     this.portalMesh = new THREE.Mesh(portalGeom, portalMat);
-    this.portalMesh.position.set(-5, 2, -5);
+    this.portalMesh.position.set(0, 2, -10);
     this.scene.add(this.portalMesh);
 
     // Initialize Particle System
@@ -1221,8 +1356,9 @@ export class GameEngine {
     this.spawnEnemies(150);
     this.spawnInteractables();
     
-    // Set initial health
+    // Set initial health and mana
     this.playerHealth.set(this.derivedStats().maxHealth);
+    this.playerMana.set(this.derivedStats().intelligence * 10);
   }
 
   private createWall(x: number, y: number, z: number, w: number, h: number, d: number) {
@@ -1267,9 +1403,23 @@ export class GameEngine {
 
     enemy.onAttack = (damage) => {
       const stats = this.derivedStats();
-      const actualDamage = Math.max(1, damage - stats.defense / 2);
+
+      // Evasion
+      if (stats.evasion > 0 && Math.random() * 100 < stats.evasion) {
+        this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2, 0)), 'EVADED', '#cccccc');
+        return;
+      }
+
+      let actualDamage = Math.max(1, damage - stats.defense / 2);
+
+      // Block
+      if (stats.blockChance > 0 && Math.random() * 100 < stats.blockChance) {
+        actualDamage *= 0.3; // 70% damage reduction on block
+        this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2, 0)), 'BLOCKED', '#3b82f6');
+      }
+
       this.playerHealth.update(h => Math.max(0, h - actualDamage));
-      this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2, 0)), Math.floor(actualDamage), '#ff0000');
+      this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2.5, 0)), Math.floor(actualDamage), '#ff0000');
       
       if (this.playerHealth() <= 0) {
         this.playerHealth.set(0);
@@ -1404,13 +1554,13 @@ export class GameEngine {
       inventory: this.inventory(),
       chest: this.chest(),
       equipped: this.equipped(),
+      potions: this.potions(),
       gold: this.gold(),
       materials: this.materials(),
       baseStats: this.baseStats(),
       currentRegion: this.currentRegion(),
       dungeonLevel: this.dungeonLevel(),
-      activeAttack: this.activeAttack(),
-      activeSpell: this.activeSpell(),
+      activeSkills: this.activeSkills(),
       linkedSupports: this.linkedSupports()
     };
     localStorage.setItem('project_abyss_save', JSON.stringify(data));
@@ -1425,6 +1575,7 @@ export class GameEngine {
       this.inventory.set(data.inventory || []);
       this.chest.set(data.chest || []);
       this.equipped.set(data.equipped || {});
+      this.potions.set(data.potions || [null, null, null, null]);
       this.gold.set(data.gold || 0);
       this.materials.set(data.materials || {
         [CraftingMaterial.DUST]: 0,
@@ -1437,6 +1588,7 @@ export class GameEngine {
         stats.allocatedPassives = ['start'];
       }
       // Add new stats if missing from older saves
+      stats.manaRegeneration = stats.manaRegeneration || 0;
       stats.lifeRegeneration = stats.lifeRegeneration || 0;
       stats.lifeLeechAttack = stats.lifeLeechAttack || 0;
       stats.lifeLeechSpell = stats.lifeLeechSpell || 0;
@@ -1449,8 +1601,13 @@ export class GameEngine {
       this.baseStats.set(stats);
       this.currentRegion.set(data.currentRegion || 'town');
       this.dungeonLevel.set(data.dungeonLevel || 1);
-      if (data.activeAttack) this.activeAttack.set(data.activeAttack);
-      if (data.activeSpell) this.activeSpell.set(data.activeSpell);
+      if (data.activeSkills) this.activeSkills.set(data.activeSkills);
+      else {
+        // Migration from old save format
+        const oldAttack = data.activeAttack || 'strike';
+        const oldSpells = data.activeSpells || ['fireball', null, null, null];
+        this.activeSkills.set([oldAttack, ...oldSpells]);
+      }
       if (data.linkedSupports) this.linkedSupports.set(data.linkedSupports);
       this.createEnvironment();
       this.gameState.set('playing');
@@ -1464,6 +1621,7 @@ export class GameEngine {
     this.inventory.set([]);
     this.chest.set([]);
     this.equipped.set({});
+    this.potions.set([null, null, null, null]);
     this.gold.set(0);
     this.materials.set({
       [CraftingMaterial.DUST]: 0,
@@ -1490,16 +1648,18 @@ export class GameEngine {
       attackSpeed: 1.0,
       castSpeed: 1.0,
       lifeRegeneration: 0,
+      manaRegeneration: 0,
       lifeLeechAttack: 0,
       lifeLeechSpell: 0,
       fireResistance: 0,
       lightningResistance: 0,
       iceResistance: 0,
       poisonResistance: 0,
-      maxLifeLeechRate: 10
+      maxLifeLeechRate: 10,
+      blockChance: 0,
+      evasion: 0
     });
-    this.activeAttack.set('strike');
-    this.activeSpell.set('fireball');
+    this.activeSkills.set(['strike', 'fireball', null, null, null]);
     this.linkedSupports.set({
       'strike': [], 'cleave': [], 'leap': [], 'whirlwind': [], 'smite': [],
       'fireball': [], 'nova': [], 'arc': [], 'ice_spear': [], 'meteor': []
@@ -1508,6 +1668,13 @@ export class GameEngine {
     this.dungeonLevel.set(1);
     this.createEnvironment();
     this.gameState.set('playing');
+  }
+
+  public returnToTown() {
+    if (this.currentRegion() !== 'town') {
+      this.currentRegion.set('town');
+      this.createEnvironment();
+    }
   }
 
   public respawn(location: 'town' | 'dungeon') {
@@ -1748,12 +1915,26 @@ export class GameEngine {
       // Hit detection with player
       if (proj.position.distanceTo(this.player.position) < 1.0) {
         const stats = this.derivedStats();
+
+        // Evasion
+        if (stats.evasion > 0 && Math.random() * 100 < stats.evasion) {
+          this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2, 0)), 'EVADED', '#cccccc');
+          this.scene.remove(proj);
+          return;
+        }
+
         const avgRes = (stats.fireResistance + stats.lightningResistance + stats.iceResistance + stats.poisonResistance) / 4;
         const resReduction = Math.min(0.75, avgRes / 100); // Cap at 75% reduction
-        const actualDamage = Math.max(1, damage * (1 - resReduction));
+        let actualDamage = Math.max(1, damage * (1 - resReduction));
         
+        // Block
+        if (stats.blockChance > 0 && Math.random() * 100 < stats.blockChance) {
+          actualDamage *= 0.3; // 70% damage reduction on block
+          this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2, 0)), 'BLOCKED', '#3b82f6');
+        }
+
         this.playerHealth.update(h => Math.max(0, h - actualDamage));
-        this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2, 0)), Math.floor(actualDamage), '#ff00ff'); // Purple for magic damage
+        this.spawnDamageNumber(this.player.position.clone().add(new THREE.Vector3(0, 2.5, 0)), Math.floor(actualDamage), '#ff00ff'); // Purple for magic damage
         
         if (this.playerHealth() <= 0) {
           this.playerHealth.set(0);
@@ -1893,16 +2074,21 @@ export class GameEngine {
               this.enemies.splice(i, 1);
               continue;
             }
-            enemy.update(this.player.position, delta);
+            enemy.update(this.player.position, delta, this.camera);
           }
           
-          // Life Regeneration
+          // Life and Mana Regeneration
           if (now - this.lastRegenTime > 1000) {
             this.lastRegenTime = now;
-            const regen = this.derivedStats().lifeRegeneration;
-            if (regen > 0 && this.playerHealth() > 0 && this.playerHealth() < this.derivedStats().maxHealth) {
-              this.playerHealth.update(h => Math.min(this.derivedStats().maxHealth, h + regen));
+            const stats = this.derivedStats();
+            const regen = stats.lifeRegeneration;
+            if (regen > 0 && this.playerHealth() > 0 && this.playerHealth() < stats.maxHealth) {
+              this.playerHealth.update(h => Math.min(stats.maxHealth, h + regen));
             }
+            // Mana regen using 1% max mana + flat mana regeneration stat
+            const maxMana = stats.intelligence * 10;
+            const manaRegen = (maxMana * 0.01) + (stats.manaRegeneration || 0);
+            this.playerMana.update(m => Math.min(maxMana, m + manaRegen));
           }
 
           // Process Life Leech
@@ -1921,6 +2107,26 @@ export class GameEngine {
             const maxLeechThisFrame = maxLeechPerSec * delta;
             const actualLeech = Math.min(totalLeechThisFrame, maxLeechThisFrame);
             this.playerHealth.update(h => Math.min(this.derivedStats().maxHealth, h + actualLeech));
+          }
+
+          // Buff Expiration
+          const buffs = this.activeBuffs();
+          let buffsChanged = false;
+          const newBuffs = { ...buffs };
+          
+          if (newBuffs.blockExpire && now > newBuffs.blockExpire) {
+            newBuffs.blockChance = 0;
+            newBuffs.blockExpire = 0;
+            buffsChanged = true;
+          }
+          if (newBuffs.evadeExpire && now > newBuffs.evadeExpire) {
+            newBuffs.evadeChance = 0;
+            newBuffs.evadeExpire = 0;
+            buffsChanged = true;
+          }
+          
+          if (buffsChanged) {
+            this.activeBuffs.set(newBuffs);
           }
         }
 
@@ -1979,15 +2185,18 @@ export class GameEngine {
 
         // Update cooldown progress
         const currentTime = Date.now();
-        const attackStats = this.getSkillStats(this.activeAttack());
-        const attackCd = attackStats.cooldown * 1000;
-        const attackElapsed = currentTime - this.lastAttackTime;
-        this.attackCooldownProgress.set(Math.max(0, 1 - (attackElapsed / attackCd)));
-
-        const spellStats = this.getSkillStats(this.activeSpell());
-        const spellCd = spellStats.cooldown * 1000;
-        const spellElapsed = currentTime - this.lastCastTime;
-        this.spellCooldownProgress.set(Math.max(0, 1 - (spellElapsed / spellCd)));
+        const skills = this.activeSkills();
+        const cds = [1, 1, 1, 1, 1];
+        for (let i = 0; i < 5; i++) {
+          const sid = skills[i];
+          if (sid) {
+            const stats = this.getSkillStats(sid);
+            const cd = stats.cooldown * 1000;
+            const elapsed = currentTime - this.lastCastTimes[i];
+            cds[i] = Math.max(0, 1 - (elapsed / cd));
+          }
+        }
+        this.skillCooldownsProgress.set(cds);
 
         // Camera Follow
         const targetCamPos = new THREE.Vector3(t.x + 15, t.y + 15, t.z + 15);

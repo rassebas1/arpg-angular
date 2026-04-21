@@ -2,8 +2,8 @@ import { Component, ElementRef, ViewChild, AfterViewInit, OnInit, inject, HostLi
 import { DecimalPipe } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { GameEngine } from './engine/game-engine';
-import { RARITY_COLORS, Rarity, Item, ItemSlot, ItemStats, LootManager, CraftingMaterial } from './engine/items';
-import { SKILL_REGISTRY, SkillDef } from './engine/skills';
+import { RARITY_COLORS, Rarity, Item, ItemSlot, ItemStats, LootManager, CraftingMaterial, ConsumableType, ITEM_SETS } from './engine/items';
+import { SKILL_REGISTRY, SkillDef, SkillCategory } from './engine/skills';
 import { AssetService } from './engine/asset-service';
 import { PASSIVE_TREE, PassiveNode } from './engine/passives';
 
@@ -250,6 +250,13 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
                     </div>
                   </div>
                   <div class="flex justify-between items-center p-1.5 hover:bg-white/5 rounded relative group cursor-help">
+                    <span class="text-xs font-mono text-blue-400/80">Mana Regen</span>
+                    <span class="text-sm font-bold text-blue-400">{{ stats().manaRegeneration.toFixed(1) }}/s</span>
+                    <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-48 bg-black/95 border border-white/20 p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl text-center">
+                      <div class="text-[10px] text-white/60">Extra mana recovered every second.</div>
+                    </div>
+                  </div>
+                  <div class="flex justify-between items-center p-1.5 hover:bg-white/5 rounded relative group cursor-help">
                     <span class="text-xs font-mono text-red-500/80">Life Leech (Attack)</span>
                     <span class="text-sm font-bold text-red-500">{{ stats().lifeLeechAttack }}%</span>
                     <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-48 bg-black/95 border border-white/20 p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl text-center">
@@ -272,30 +279,56 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
                   </div>
                   <div class="flex justify-between items-center p-1.5 hover:bg-white/5 rounded relative group cursor-help">
                     <span class="text-xs font-mono text-orange-500/80">Fire Res</span>
-                    <span class="text-sm font-bold text-orange-500">{{ stats().fireResistance }}</span>
+                    <span class="text-sm font-bold text-orange-500">
+                      {{ stats().fireResistance > 75 ? '75% (' + stats().fireResistance + '%)' : stats().fireResistance + '%' }}
+                    </span>
                     <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-48 bg-black/95 border border-white/20 p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl text-center">
-                      <div class="text-[10px] text-white/60">Reduces incoming fire damage.</div>
+                      <div class="text-[10px] text-white/60">Reduces incoming fire damage (capped at 75%).</div>
                     </div>
                   </div>
                   <div class="flex justify-between items-center p-1.5 hover:bg-white/5 rounded relative group cursor-help">
                     <span class="text-xs font-mono text-yellow-300/80">Lightning Res</span>
-                    <span class="text-sm font-bold text-yellow-300">{{ stats().lightningResistance }}</span>
+                    <span class="text-sm font-bold text-yellow-300">
+                      {{ stats().lightningResistance > 75 ? '75% (' + stats().lightningResistance + '%)' : stats().lightningResistance + '%' }}
+                    </span>
                     <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-48 bg-black/95 border border-white/20 p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl text-center">
-                      <div class="text-[10px] text-white/60">Reduces incoming lightning damage.</div>
+                      <div class="text-[10px] text-white/60">Reduces incoming lightning damage (capped at 75%).</div>
                     </div>
                   </div>
                   <div class="flex justify-between items-center p-1.5 hover:bg-white/5 rounded relative group cursor-help">
                     <span class="text-xs font-mono text-cyan-400/80">Ice Res</span>
-                    <span class="text-sm font-bold text-cyan-400">{{ stats().iceResistance }}</span>
+                    <span class="text-sm font-bold text-cyan-400">
+                      {{ stats().iceResistance > 75 ? '75% (' + stats().iceResistance + '%)' : stats().iceResistance + '%' }}
+                    </span>
                     <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-48 bg-black/95 border border-white/20 p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl text-center">
-                      <div class="text-[10px] text-white/60">Reduces incoming ice damage.</div>
+                      <div class="text-[10px] text-white/60">Reduces incoming ice damage (capped at 75%).</div>
                     </div>
                   </div>
                   <div class="flex justify-between items-center p-1.5 hover:bg-white/5 rounded relative group cursor-help">
                     <span class="text-xs font-mono text-green-500/80">Poison Res</span>
-                    <span class="text-sm font-bold text-green-500">{{ stats().poisonResistance }}</span>
+                    <span class="text-sm font-bold text-green-500">
+                      {{ stats().poisonResistance > 75 ? '75% (' + stats().poisonResistance + '%)' : stats().poisonResistance + '%' }}
+                    </span>
                     <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-48 bg-black/95 border border-white/20 p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl text-center">
-                      <div class="text-[10px] text-white/60">Reduces incoming poison damage.</div>
+                      <div class="text-[10px] text-white/60">Reduces incoming poison damage (capped at 75%).</div>
+                    </div>
+                  </div>
+                  <div class="flex justify-between items-center p-1.5 hover:bg-white/5 rounded relative group cursor-help">
+                    <span class="text-xs font-mono text-cyan-500/80">Evasion</span>
+                    <span class="text-sm font-bold text-cyan-500">
+                      {{ stats().evasion > 70 ? '70% (' + stats().evasion + '%)' : stats().evasion + '%' }}
+                    </span>
+                    <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-48 bg-black/95 border border-white/20 p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl text-center">
+                      <div class="text-[10px] text-white/60">Chance to completely evade an attack (capped at 70%).</div>
+                    </div>
+                  </div>
+                  <div class="flex justify-between items-center p-1.5 hover:bg-white/5 rounded relative group cursor-help">
+                    <span class="text-xs font-mono text-blue-500/80">Block Chance</span>
+                    <span class="text-sm font-bold text-blue-500">
+                      {{ stats().blockChance > 70 ? '70% (' + stats().blockChance + '%)' : stats().blockChance + '%' }}
+                    </span>
+                    <div class="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-48 bg-black/95 border border-white/20 p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-2xl text-center">
+                      <div class="text-[10px] text-white/60">Chance to block incoming damage by 70% (capped at 70%).</div>
                     </div>
                   </div>
                 </div>
@@ -380,6 +413,9 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
                 @if (item.stats.critChance) { <span class="text-[10px] font-mono text-pink-400">CRIT: {{ item.stats.critChance }}%</span> }
                 @if (item.stats.critDamage) { <span class="text-[10px] font-mono text-pink-400">CRIT DMG: {{ item.stats.critDamage }}%</span> }
                 @if (item.stats.attackSpeed) { <span class="text-[10px] font-mono text-yellow-400">ATK SPD: {{ item.stats.attackSpeed }}%</span> }
+                @if (item.stats.manaRegeneration) { <span class="text-[10px] font-mono text-blue-400">MP REG: {{ item.stats.manaRegeneration }}</span> }
+                @if (item.stats.blockChance) { <span class="text-[10px] font-mono text-blue-500">BLOCK: {{ item.stats.blockChance }}%</span> }
+                @if (item.stats.evasion) { <span class="text-[10px] font-mono text-cyan-500">EVA: {{ item.stats.evasion }}%</span> }
               </div>
             </button>
           } @empty {
@@ -395,10 +431,16 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
         @let compareItem = getCompareItem(item);
         <div class="absolute top-4 right-[280px] z-50 flex gap-2 pointer-events-none animate-in fade-in duration-200">
           <!-- Hovered Item Stats -->
-          <div class="w-48 bg-black/95 border border-white/10 p-3 rounded-xl shadow-2xl">
+          <div class="w-64 bg-black/95 border border-white/10 p-3 rounded-xl shadow-2xl">
             <div class="text-[9px] text-white/40 uppercase tracking-wider mb-1 border-b border-white/10 pb-1">Hovered Item</div>
             <div class="text-xs font-bold mb-1" [style.color]="getRarityColor(item.rarity)">{{ item.name }} <span class="text-[9px] text-white/50">(Lv. {{ item.level }})</span></div>
-            <div class="text-[10px] text-white/40 font-mono space-y-0.5">
+            @if (item.setId) {
+              @let setDef = getItemSet(item.setId);
+              @if (setDef) {
+                <div class="text-[10px] text-green-400 font-bold mb-1">{{ setDef.name }} Set ({{ getEquippedSetPiecesCount(item.setId) }} equipped)</div>
+              }
+            }
+            <div class="text-[10px] text-white/40 font-mono space-y-0.5 mb-2">
               @for (stat of allStats; track stat.key) {
                 @if (item.stats[stat.key] || (compareItem && compareItem.stats[stat.key])) {
                   <div class="flex justify-between items-center" [class]="stat.colorClass">
@@ -415,6 +457,25 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
                 }
               }
             </div>
+
+            @if (item.setId) {
+              @let setDef = getItemSet(item.setId);
+              @if (setDef) {
+                <div class="text-[10px] mt-2 border-t border-white/10 pt-2 space-y-1">
+                  @for (bonus of setDef.bonuses; track bonus.piecesRequired) {
+                    @let isActive = getEquippedSetPiecesCount(item.setId) >= bonus.piecesRequired;
+                    <div [class.text-green-400]="isActive" [class.text-white]="!isActive" [class.opacity-50]="!isActive">
+                      <span class="font-bold">({{ bonus.piecesRequired }} Pieces):</span>
+                      @for (stat of allStats; track stat.key) {
+                        @if (bonus.stats[stat.key]) {
+                          <span class="ml-1">{{ stat.label }} +{{ bonus.stats[stat.key] }}{{ stat.isPercent ? '%' : '' }}</span>
+                        }
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            }
           </div>
 
           <!-- Equipped Item Stats -->
@@ -764,55 +825,122 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
       }
 
       <!-- Action Bar (Globes + Skills) -->
-      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-6">
+      <div class="absolute bottom-0 left-1/2 -translate-x-1/2 z-10 flex items-end">
+        
         <!-- Health Globe -->
-        <div class="relative w-24 h-24 rounded-full bg-black/80 border-2 border-gray-700/50 overflow-hidden shadow-[0_0_20px_rgba(220,38,38,0.2)]">
-          <div class="absolute bottom-0 w-full bg-gradient-to-t from-red-700 to-red-500 transition-all duration-300" 
+        <div class="relative w-32 h-32 rounded-full bg-black/90 border-4 border-gray-800 overflow-hidden shadow-[0_0_30px_rgba(220,38,38,0.3)] z-20" style="margin-right: -24px; margin-bottom: 8px;">
+          <div class="absolute bottom-0 w-full bg-gradient-to-t from-red-800 to-red-500 transition-all duration-300" 
                [style.height.%]="(playerHealth() / stats().maxHealth) * 100">
           </div>
           <!-- Glass reflection -->
-          <div class="absolute inset-0 rounded-full shadow-[inset_0_4px_10px_rgba(255,255,255,0.3)]"></div>
-          <div class="absolute inset-0 flex items-center justify-center text-white/80 font-mono text-xs font-bold drop-shadow-md">
-            {{ playerHealth() | number:'1.0-0' }}
+          <div class="absolute inset-0 rounded-full shadow-[inset_0_8px_15px_rgba(255,255,255,0.2)]"></div>
+          <div class="absolute inset-x-0 top-2 h-1/4 bg-gradient-to-b from-white/20 to-transparent rounded-t-full"></div>
+          <div class="absolute inset-0 flex items-center justify-center text-white/90 font-mono text-sm font-bold drop-shadow-md">
+            {{ playerHealth() | number:'1.0-0' }} / {{ stats().maxHealth | number:'1.0-0' }}
           </div>
         </div>
 
-        <!-- Skills Bar -->
-        <div class="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-2xl flex gap-4 mb-2">
-          <div class="relative group">
-            <div class="w-12 h-12 rounded-full bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 font-mono text-xs hover:bg-orange-500/30 transition-all cursor-pointer shadow-[0_0_20px_rgba(249,115,22,0.2)] overflow-hidden relative">
-              <span class="relative z-10">1</span>
-              <!-- Cooldown Sweep -->
-              @if (spellCooldownProgress() < 1) {
-                <div class="absolute inset-0 bg-black/60 z-0" [style.height.%]="(1 - spellCooldownProgress()) * 100"></div>
-              }
-            </div>
-            <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black/80 text-[10px] text-white/60 px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap uppercase">{{ getSkillName(activeSpell()) }}</div>
+        <!-- Center Unified Bar -->
+        <div class="bg-black/80 backdrop-blur-lg border-t border-x border-white/10 px-10 py-4 rounded-t-3xl flex flex-col gap-3 items-center z-10 shadow-2xl pb-6">
+          
+          <!-- Potions Row -->
+          <div class="flex gap-2 items-center">
+            @for (idx of [0, 1, 2, 3]; track idx) {
+              <div class="relative group">
+                <div class="w-10 h-10 rounded-lg bg-gray-900/80 border border-gray-700 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-800 transition-all relative overflow-hidden shadow-inner" (click)="usePotion(idx)" (contextmenu)="unequipPotion(idx); $event.preventDefault()">
+                  @if (potions()[idx]) {
+                    <div class="text-[8px] text-white/50 absolute top-0.5 right-1">{{ idx + 1 }}</div>
+                    @if (potions()[idx]!.consumableType === 'health_potion') { <div class="w-5 h-5 rounded-full bg-gradient-to-br from-red-400 to-red-600 shadow-[0_0_10px_rgba(239,68,68,0.8)]"></div> }
+                    @if (potions()[idx]!.consumableType === 'mana_potion') { <div class="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 shadow-[0_0_10px_rgba(59,130,246,0.8)]"></div> }
+                    @if (potions()[idx]!.consumableType === 'block_potion') { <div class="w-5 h-5 rounded-sm rotate-45 bg-gradient-to-br from-indigo-400 to-indigo-600 shadow-[0_0_10px_rgba(99,102,241,0.8)]"></div> }
+                    @if (potions()[idx]!.consumableType === 'evade_potion') { <div class="w-5 h-5 rounded-full border-2 border-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></div> }
+                  } @else {
+                    <span class="text-white/20 font-mono text-[10px]">{{ idx + 1 }}</span>
+                  }
+                </div>
+                @if (potions()[idx]) {
+                  <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black/90 text-xs text-white/80 px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap uppercase border border-white/10 z-50">
+                    {{ potions()[idx]!.name }} (Right click to unequip)
+                  </div>
+                }
+              </div>
+            }
           </div>
-          <div class="w-12 h-12 rounded-full bg-white/5 border border-white/20 flex items-center justify-center text-white/40 font-mono text-xs hover:bg-white/10 transition-all cursor-pointer">Q</div>
-          <div class="w-12 h-12 rounded-full bg-white/5 border border-white/20 flex items-center justify-center text-white/40 font-mono text-xs hover:bg-white/10 transition-all cursor-pointer">W</div>
-          <div class="w-12 h-12 rounded-full bg-white/5 border border-white/20 flex items-center justify-center text-white/40 font-mono text-xs hover:bg-white/10 transition-all cursor-pointer">E</div>
-          <div class="w-12 h-12 rounded-full bg-white/5 border border-white/20 flex items-center justify-center text-white/40 font-mono text-xs hover:bg-white/10 transition-all cursor-pointer">R</div>
-          <div class="relative group">
-            <div class="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono text-xs hover:bg-emerald-500/30 transition-all cursor-pointer shadow-[0_0_20px_rgba(16,185,129,0.2)] overflow-hidden relative">
-              <span class="relative z-10">SPACE</span>
-              <!-- Cooldown Sweep -->
-              @if (attackCooldownProgress() < 1) {
-                <div class="absolute inset-0 bg-black/60 z-0" [style.height.%]="(1 - attackCooldownProgress()) * 100"></div>
+
+          <!-- Skills Row -->
+          <div class="flex gap-3 items-center">
+            @for (key of ['Q', 'W', 'E', 'R']; track key; let i = $index) {
+              <div class="relative group">
+                <div class="w-14 h-14 rounded-full bg-gray-900/80 border border-gray-600 flex items-center justify-center font-mono text-sm transition-all cursor-pointer shadow-[0_0_15px_rgba(0,0,0,0.5)] overflow-hidden relative"
+                     [class.border-cyan-500]="activeSkills()[i + 1]" [class.text-cyan-400]="activeSkills()[i + 1]" [class.text-white]="!activeSkills()[i + 1]">
+                  <span class="relative z-10">{{ key }}</span>
+                  @if (activeSkills()[i + 1]) {
+                    <!-- Cooldown Sweep -->
+                    @if (skillCooldownsProgress()[i + 1] < 1) {
+                      <div class="absolute inset-0 bg-black/70 z-0" [style.height.%]="(1 - skillCooldownsProgress()[i + 1]) * 100"></div>
+                    }
+                  }
+                </div>
+                @if (activeSkills()[i + 1]) {
+                  @let sId = activeSkills()[i + 1]!;
+                  <div class="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-black/95 text-xs text-white/80 p-2 rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap border border-white/10 z-50 shadow-2xl flex flex-col gap-1 items-center min-w-[120px]">
+                    <span class="font-bold text-cyan-400 uppercase tracking-widest">{{ getSkillName(sId) }}</span>
+                    @let sStats = getSkillTooltipStats(sId);
+                    @if (sStats) {
+                      <div class="text-[9px] font-mono text-white/60 w-full">
+                        <div class="flex justify-between w-full"><span>DMG:</span> <span class="text-white">{{ sStats.damage | number:'1.0-0' }}</span></div>
+                        <div class="flex justify-between w-full"><span>CD:</span> <span>{{ sStats.cooldown | number:'1.1-2' }}s</span></div>
+                        @if (sStats.manaCost > 0) {
+                          <div class="flex justify-between w-full"><span>MP:</span> <span class="text-blue-400">{{ sStats.manaCost }}</span></div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
+            <div class="w-px h-10 bg-white/10 mx-2"></div>
+
+            <div class="relative group">
+              <div class="w-16 h-16 rounded-full bg-emerald-900/40 border-2 border-emerald-500/60 flex items-center justify-center text-emerald-400 font-mono text-xs hover:bg-emerald-800/50 transition-all cursor-pointer shadow-[0_0_20px_rgba(16,185,129,0.3)] overflow-hidden relative">
+                <span class="relative z-10 font-bold">SPACE</span>
+                <!-- Cooldown Sweep -->
+                @if (skillCooldownsProgress()[0] < 1) {
+                  <div class="absolute inset-0 bg-black/60 z-0" [style.height.%]="(1 - skillCooldownsProgress()[0]) * 100"></div>
+                }
+              </div>
+              @if (activeSkills()[0]) {
+                @let spaceId = activeSkills()[0]!;
+                <div class="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-black/95 text-xs text-white/80 p-2 rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap border border-white/10 z-50 shadow-2xl flex flex-col gap-1 items-center min-w-[120px]">
+                  <span class="font-bold text-emerald-400 uppercase tracking-widest">{{ getSkillName(spaceId) }}</span>
+                  @let sStats = getSkillTooltipStats(spaceId);
+                  @if (sStats) {
+                    <div class="text-[9px] font-mono text-white/60 w-full">
+                      <div class="flex justify-between w-full"><span>DMG:</span> <span class="text-white">{{ sStats.damage | number:'1.0-0' }}</span></div>
+                      <div class="flex justify-between w-full"><span>CD:</span> <span>{{ sStats.cooldown | number:'1.1-2' }}s</span></div>
+                      @if (sStats.manaCost > 0) {
+                        <div class="flex justify-between w-full"><span>MP:</span> <span class="text-blue-400">{{ sStats.manaCost }}</span></div>
+                      }
+                    </div>
+                  }
+                </div>
+              } @else {
+                <div class="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-black/90 text-xs text-white/80 px-3 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap uppercase border border-white/10 z-50">Empty</div>
               }
             </div>
-            <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-black/80 text-[10px] text-white/60 px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap uppercase">{{ getSkillName(activeAttack()) }}</div>
           </div>
         </div>
 
         <!-- Mana Globe -->
-        <div class="relative w-24 h-24 rounded-full bg-black/80 border-2 border-gray-700/50 overflow-hidden shadow-[0_0_20px_rgba(59,130,246,0.2)]">
-          <div class="absolute bottom-0 w-full bg-gradient-to-t from-blue-700 to-blue-500 transition-all duration-300" 
-               [style.height.%]="100">
+        <div class="relative w-32 h-32 rounded-full bg-black/90 border-4 border-gray-800 overflow-hidden shadow-[0_0_30px_rgba(59,130,246,0.3)] z-20" style="margin-left: -24px; margin-bottom: 8px;">
+          <div class="absolute bottom-0 w-full bg-gradient-to-t from-blue-800 to-blue-500 transition-all duration-300" 
+               [style.height.%]="(playerMana() / (stats().intelligence * 10)) * 100">
           </div>
-          <div class="absolute inset-0 rounded-full shadow-[inset_0_4px_10px_rgba(255,255,255,0.3)]"></div>
-          <div class="absolute inset-0 flex items-center justify-center text-white/80 font-mono text-xs font-bold drop-shadow-md">
-            {{ stats().intelligence * 10 }}
+          <div class="absolute inset-x-0 top-2 h-1/4 bg-gradient-to-b from-white/20 to-transparent rounded-t-full z-10"></div>
+          <div class="absolute inset-0 rounded-full shadow-[inset_0_8px_15px_rgba(255,255,255,0.2)]"></div>
+          <div class="absolute inset-0 flex items-center justify-center text-white/90 font-mono text-sm font-bold drop-shadow-md z-20">
+            {{ playerMana() | number:'1.0-0' }} / {{ stats().intelligence * 10 | number:'1.0-0' }}
           </div>
         </div>
       </div>
@@ -820,7 +948,8 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
       <!-- Controls Info & Toggles -->
       <div class="absolute bottom-4 right-4 z-20 flex flex-col items-end gap-4 pointer-events-auto">
         <div class="text-right pointer-events-none">
-          <div class="text-[10px] font-mono text-white/20 uppercase tracking-widest">1 to Cast Spell</div>
+          <div class="text-[10px] font-mono text-white/20 uppercase tracking-widest">Q, W, E, R to Cast Spell</div>
+          <div class="text-[10px] font-mono text-white/20 uppercase tracking-widest">1, 2, 3, 4 to Use Potion</div>
           <div class="text-[10px] font-mono text-white/20 uppercase tracking-widest">Space to Attack</div>
           <div class="text-[10px] font-mono text-white/20 uppercase tracking-widest">Click to Move</div>
           <div class="text-[10px] font-mono text-white/20 uppercase tracking-widest mt-2">ESC to Menu</div>
@@ -850,6 +979,13 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
               <span class="absolute -top-2 -right-2 bg-black border border-purple-500/40 text-[9px] px-1.5 py-0.5 rounded text-purple-400 font-mono">G</span>
             </button>
           }
+          @if (currentRegion() === 'dungeon') {
+            <button (click)="returnToTown()" class="w-12 h-12 bg-cyan-500/20 backdrop-blur-md border border-cyan-500/40 rounded-xl flex items-center justify-center hover:bg-cyan-500/40 transition-colors relative">
+              <mat-icon class="text-cyan-400">sensor_door</mat-icon>
+              <span class="absolute -top-2 -right-2 bg-black border border-cyan-500/40 text-[9px] px-1.5 py-0.5 rounded text-cyan-400 font-mono">P</span>
+            </button>
+          }
+
           <button (click)="showSkillTree.update(v => !v)" class="w-12 h-12 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center hover:bg-white/10 transition-colors relative" [class.bg-white]="showSkillTree()" [class.bg-opacity-10]="showSkillTree()">
             <mat-icon class="text-white/80">account_tree</mat-icon>
             <span class="absolute -top-2 -right-2 bg-black border border-white/20 text-[9px] px-1.5 py-0.5 rounded text-white/80 font-mono">T</span>
@@ -882,60 +1018,50 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
         </div>
         
         <!-- Visual Links Display -->
-        <div class="p-6 border-b border-white/10 bg-black/40 flex justify-around">
-          <!-- Attack Setup -->
+        <div class="p-6 border-b border-white/10 bg-black/40 flex justify-center">
           <div class="flex flex-col items-center">
-            <h4 class="text-[10px] font-mono text-emerald-400 uppercase mb-4 tracking-widest">Primary Attack (Space)</h4>
-            <div class="flex items-center gap-2">
-              <!-- Main Skill Socket -->
-              <div class="w-16 h-16 rounded-full border-2 border-emerald-500 bg-emerald-500/20 flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.3)] relative z-10">
-                <span class="text-xs font-bold text-white text-center leading-tight">{{ getSkillName(activeAttack()) }}</span>
-              </div>
-              <!-- Links -->
-              <div class="flex gap-1">
-                @for (i of [0, 1, 2, 3, 4]; track i) {
-                  <div class="flex items-center">
-                    <div class="w-4 h-1 bg-white/20"></div>
-                    <div class="w-10 h-10 rounded-full border border-white/30 bg-white/5 flex items-center justify-center relative"
-                         [class.border-blue-400]="linkedSupports()[activeAttack()]?.[i]"
-                         [class.bg-blue-500/20]="linkedSupports()[activeAttack()]?.[i]">
-                      @if (linkedSupports()[activeAttack()]?.[i]) {
-                        <span class="text-[8px] font-bold text-white text-center leading-tight px-1">{{ getSkillName(linkedSupports()[activeAttack()][i]) }}</span>
-                      } @else {
-                        <span class="text-[10px] text-white/20">+</span>
+            <h4 class="text-[10px] font-mono text-cyan-400 uppercase mb-4 tracking-widest">Active Abilities</h4>
+            <div class="flex gap-6">
+              @for (key of ['SPACE', 'Q', 'W', 'E', 'R']; track key; let idx = $index) {
+                <div class="flex flex-col items-center">
+                  <div class="flex flex-col items-center cursor-pointer p-2 rounded-xl transition-all relative group"
+                       [class.bg-cyan-500]="selectedSpellSlot() === idx" [class.bg-opacity-20]="selectedSpellSlot() === idx"
+                       [class.border]="true" [class.border-cyan-500]="selectedSpellSlot() === idx" [class.border-transparent]="selectedSpellSlot() !== idx"
+                       (click)="selectedSpellSlot.set(idx)">
+                    <div class="text-[10px] text-white/60 mb-1 font-mono font-bold">{{ key }}</div>
+                    <!-- Main Skill Socket -->
+                    <div class="w-14 h-14 rounded-full border-2 border-cyan-500 bg-cyan-500/20 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.3)] relative z-10 transition-transform" [class.scale-110]="selectedSpellSlot() === idx">
+                      <span class="text-[10px] font-bold text-white text-center leading-tight">{{ activeSkills()[idx] ? getSkillName(activeSkills()[idx]!) : 'Empty' }}</span>
+                    </div>
+                    
+                    @if (activeSkills()[idx]) {
+                      @let sId = activeSkills()[idx]!;
+                      <div class="absolute top-1/2 left-full ml-4 -translate-y-1/2 bg-black/95 text-xs text-white/80 p-2 rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap border border-white/10 z-50 shadow-2xl flex flex-col gap-1 items-center min-w-[120px]">
+                        <span class="font-bold text-cyan-400 uppercase tracking-widest">{{ getSkillName(sId) }}</span>
+                        @let sStats = getSkillTooltipStats(sId);
+                        @if (sStats) {
+                          <div class="text-[9px] font-mono text-white/60 w-full">
+                            <div class="flex justify-between w-full"><span>DMG:</span> <span class="text-white">{{ sStats.damage | number:'1.0-0' }}</span></div>
+                            <div class="flex justify-between w-full"><span>CD:</span> <span>{{ sStats.cooldown | number:'1.1-2' }}s</span></div>
+                            @if (sStats.manaCost > 0) {
+                              <div class="flex justify-between w-full"><span>MP:</span> <span class="text-blue-400">{{ sStats.manaCost }}</span></div>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                  <!-- Links Display -->
+                  @if (activeSkills()[idx]) {
+                    <div class="flex gap-1 mt-1">
+                      @for (i of [0, 1, 2, 3, 4]; track i) {
+                        <div class="w-2 h-2 rounded-full border border-white/30"
+                             [class.bg-blue-400]="linkedSupports()[activeSkills()[idx]!]?.[i]" [class.border-blue-400]="linkedSupports()[activeSkills()[idx]!]?.[i]"></div>
                       }
                     </div>
-                  </div>
-                }
-              </div>
-            </div>
-          </div>
-
-          <!-- Spell Setup -->
-          <div class="flex flex-col items-center">
-            <h4 class="text-[10px] font-mono text-orange-400 uppercase mb-4 tracking-widest">Active Spell (1)</h4>
-            <div class="flex items-center gap-2">
-              <!-- Main Skill Socket -->
-              <div class="w-16 h-16 rounded-full border-2 border-orange-500 bg-orange-500/20 flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.3)] relative z-10">
-                <span class="text-xs font-bold text-white text-center leading-tight">{{ getSkillName(activeSpell()) }}</span>
-              </div>
-              <!-- Links -->
-              <div class="flex gap-1">
-                @for (i of [0, 1, 2, 3, 4]; track i) {
-                  <div class="flex items-center">
-                    <div class="w-4 h-1 bg-white/20"></div>
-                    <div class="w-10 h-10 rounded-full border border-white/30 bg-white/5 flex items-center justify-center relative"
-                         [class.border-blue-400]="linkedSupports()[activeSpell()]?.[i]"
-                         [class.bg-blue-500/20]="linkedSupports()[activeSpell()]?.[i]">
-                      @if (linkedSupports()[activeSpell()]?.[i]) {
-                        <span class="text-[8px] font-bold text-white text-center leading-tight px-1">{{ getSkillName(linkedSupports()[activeSpell()][i]) }}</span>
-                      } @else {
-                        <span class="text-[10px] text-white/20">+</span>
-                      }
-                    </div>
-                  </div>
-                }
-              </div>
+                  }
+                </div>
+              }
             </div>
           </div>
         </div>
@@ -943,81 +1069,92 @@ import { PASSIVE_TREE, PassiveNode } from './engine/passives';
         <div class="flex flex-1 overflow-hidden">
           <!-- Active Skills List -->
           <div class="w-1/2 border-r border-white/10 p-4 overflow-y-auto custom-scrollbar">
-            <h3 class="text-xs font-mono text-white/40 mb-3 uppercase">Select Active Skills</h3>
-            
-            <div class="mb-6">
-              <h4 class="text-[10px] font-mono text-emerald-400/70 uppercase mb-2">Attacks</h4>
-              <div class="grid grid-cols-2 gap-2">
-                @for (skill of attacks; track skill.id) {
-                  <button (click)="activeAttack.set(skill.id)" 
-                          [class.border-emerald-500]="activeAttack() === skill.id"
-                          [class.bg-emerald-500/10]="activeAttack() === skill.id"
-                          class="text-left p-3 bg-white/5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors flex flex-col">
-                    <div class="flex justify-between items-center w-full mb-1">
-                      <span class="text-sm font-bold" [style.color]="skill.color">{{ skill.name }}</span>
-                    </div>
-                    <span class="text-[10px] text-white/40 leading-tight">{{ skill.description }}</span>
-                  </button>
-                }
-              </div>
+            <div class="flex justify-between items-baseline mb-3">
+              <h3 class="text-xs font-mono text-white/40 uppercase">Select Active Skill</h3>
+              <div class="text-[10px] text-cyan-400 font-mono">Selecting for Slot: {{ ['SPACE', 'Q', 'W', 'E', 'R'][selectedSpellSlot()] }}</div>
             </div>
-
-            <div>
-              <h4 class="text-[10px] font-mono text-orange-400/70 uppercase mb-2">Spells</h4>
-              <div class="grid grid-cols-2 gap-2">
-                @for (skill of spells; track skill.id) {
-                  <button (click)="activeSpell.set(skill.id)" 
-                          [class.border-orange-500]="activeSpell() === skill.id"
-                          [class.bg-orange-500/10]="activeSpell() === skill.id"
-                          class="text-left p-3 bg-white/5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors flex flex-col">
-                    <div class="flex justify-between items-center w-full mb-1">
-                      <span class="text-sm font-bold" [style.color]="skill.color">{{ skill.name }}</span>
+            
+            <div class="grid grid-cols-2 gap-2">
+              @for (skill of allSkills; track skill.id) {
+                <button (click)="assignSpell(skill.id)" 
+                        [class.border-cyan-500]="activeSkills()[selectedSpellSlot()] === skill.id"
+                        [class.bg-cyan-500/10]="activeSkills()[selectedSpellSlot()] === skill.id"
+                        class="text-left p-3 bg-white/5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors flex flex-col relative overflow-hidden group">
+                  @if (isSpellEquipped(skill.id)) {
+                    <div class="absolute top-1 right-1 text-[8px] bg-cyan-500 text-white px-1 rounded font-bold">EQUIPPED</div>
+                  }
+                  <div class="flex justify-between items-center w-full mb-1">
+                    <span class="text-sm font-bold" [style.color]="skill.color">{{ skill.name }}</span>
+                    <span class="text-[8px] uppercase px-1 rounded bg-black/40 border border-white/10 text-white/60">{{ skill.category }}</span>
+                  </div>
+                  <span class="text-[10px] text-white/40 leading-tight block mb-2">{{ skill.description }}</span>
+                  
+                  @let sStats = getSkillTooltipStats(skill.id);
+                  @if (sStats) {
+                    <div class="w-full mt-auto bg-black/40 rounded p-1.5 border border-white/5 font-mono text-[9px] text-white/60 space-y-0.5">
+                      <div class="flex justify-between items-center text-white/80">
+                        <span>Damage: <span [style.color]="skill.color">{{ sStats.damage | number:'1.0-0' }}</span></span>
+                        @if (sStats.manaCost > 0) {
+                          <span class="text-blue-400">MP: {{ sStats.manaCost }}</span>
+                        }
+                      </div>
+                      <div class="flex justify-between items-center">
+                        <span>Cooldown: {{ sStats.cooldown | number:'1.1-2' }}s</span>
+                        @if (sStats.scalingSource) {
+                          <span class="text-white/40">Scales w/ {{ sStats.scalingSource }}</span>
+                        }
+                      </div>
+                      @if (sStats.aoe > 1 || sStats.projectiles > 1) {
+                        <div class="flex justify-between items-center text-[8px] text-white/40">
+                          @if (sStats.aoe > 1) { <span>AoE Size: x{{ sStats.aoe | number:'1.1-1' }}</span> }
+                          @if (sStats.projectiles > 1) { <span>Projectiles: {{ sStats.projectiles }}</span> }
+                        </div>
+                      }
                     </div>
-                    <span class="text-[10px] text-white/40 leading-tight">{{ skill.description }}</span>
-                  </button>
-                }
-              </div>
+                  }
+                </button>
+              }
+              <!-- Unequip button -->
+              <button (click)="assignSpell(null)" 
+                      [class.border-red-500]="activeSkills()[selectedSpellSlot()] === null"
+                      class="col-span-2 text-center p-2 bg-white/5 rounded-lg border border-white/5 hover:bg-white/10 transition-colors flex justify-center items-center text-red-400 text-xs font-mono">
+                Unequip Slot {{ ['SPACE', 'Q', 'W', 'E', 'R'][selectedSpellSlot()] }}
+              </button>
             </div>
           </div>
 
           <!-- Support Gems List -->
           <div class="w-1/2 p-4 overflow-y-auto custom-scrollbar bg-black/20">
             <h3 class="text-xs font-mono text-white/40 mb-3 uppercase">Link Support Gems</h3>
-            <p class="text-[10px] text-white/30 mb-4">Click to toggle link. Max 5 supports per active skill.</p>
+            <p class="text-[10px] text-white/30 mb-4">Click to toggle link. Applies to the selected active skill slot. Max 5 supports per skill.</p>
             
-            <div class="grid grid-cols-2 gap-3">
-              @for (sup of supports; track sup.id) {
-                <div class="p-3 bg-white/5 rounded-lg border border-white/5 flex flex-col">
-                  <div class="mb-2">
-                    <span class="text-sm font-bold" [style.color]="sup.color">{{ sup.name }}</span>
-                  </div>
-                  <p class="text-[10px] text-white/40 mb-3 flex-1">{{ sup.description }}</p>
-                  
-                  <div class="flex gap-2 mt-auto">
-                    @if (sup.allowedCategories?.includes('attack')) {
-                      <button (click)="toggleSupport(activeAttack(), sup.id)"
-                              [class.bg-emerald-500]="isLinked(activeAttack(), sup.id)"
-                              [class.text-white]="isLinked(activeAttack(), sup.id)"
-                              [class.bg-white]="!isLinked(activeAttack(), sup.id)"
-                              [class.bg-opacity-10]="!isLinked(activeAttack(), sup.id)"
-                              class="flex-1 py-1.5 rounded text-[10px] font-mono transition-colors border border-white/10 hover:bg-white/20">
-                        Attack
-                      </button>
-                    }
-                    @if (sup.allowedCategories?.includes('spell')) {
-                      <button (click)="toggleSupport(activeSpell(), sup.id)"
-                              [class.bg-orange-500]="isLinked(activeSpell(), sup.id)"
-                              [class.text-white]="isLinked(activeSpell(), sup.id)"
-                              [class.bg-white]="!isLinked(activeSpell(), sup.id)"
-                              [class.bg-opacity-10]="!isLinked(activeSpell(), sup.id)"
-                              class="flex-1 py-1.5 rounded text-[10px] font-mono transition-colors border border-white/10 hover:bg-white/20">
-                        Spell
-                      </button>
-                    }
-                  </div>
-                </div>
-              }
-            </div>
+            @if (!activeSkills()[selectedSpellSlot()]) {
+              <div class="text-center text-white/20 text-xs font-mono mt-10">Select an active skill slot to link supports.</div>
+            } @else {
+              <div class="grid grid-cols-2 gap-3">
+                @for (sup of supports; track sup.id) {
+                  @if (sup.allowedCategories?.includes(getSkillCategory(activeSkills()[selectedSpellSlot()]!))) {
+                    <div class="p-3 bg-white/5 rounded-lg border border-white/5 flex flex-col cursor-pointer transition-colors"
+                         [class.border-blue-500]="isLinked(activeSkills()[selectedSpellSlot()]!, sup.id)"
+                         [class.bg-blue-500]="isLinked(activeSkills()[selectedSpellSlot()]!, sup.id)"
+                         [class.bg-opacity-20]="isLinked(activeSkills()[selectedSpellSlot()]!, sup.id)"
+                         [class.hover:bg-white]="!isLinked(activeSkills()[selectedSpellSlot()]!, sup.id)"
+                         [class.hover:bg-opacity-10]="!isLinked(activeSkills()[selectedSpellSlot()]!, sup.id)"
+                         (click)="toggleSupport(activeSkills()[selectedSpellSlot()]!, sup.id)">
+                      <div class="mb-2">
+                        <span class="text-sm font-bold flex items-center justify-between" [style.color]="sup.color">
+                          {{ sup.name }}
+                          @if (isLinked(activeSkills()[selectedSpellSlot()]!, sup.id)) {
+                            <mat-icon class="text-[16px] w-[16px] h-[16px] text-blue-400">link</mat-icon>
+                          }
+                        </span>
+                      </div>
+                      <p class="text-[10px] text-white/40 flex-1 leading-tight">{{ sup.description }}</p>
+                    </div>
+                  }
+                }
+              </div>
+            }
           </div>
         </div>
       </div>
@@ -1128,11 +1265,12 @@ export class GameComponent implements AfterViewInit, OnInit {
   
   inventory = this.engine.inventory;
   chest = this.engine.chest;
+  potions = this.engine.potions;
   equipped = this.engine.equipped;
   stats = this.engine.derivedStats;
   materials = this.engine.materials;
   CraftingMaterial = CraftingMaterial;
-  slots = Object.values(ItemSlot);
+  slots = Object.values(ItemSlot).filter(s => s !== ItemSlot.CONSUMABLE);
   
   loadingProgress = this.assetService.loadingProgress;
   isLoaded = this.assetService.isLoaded;
@@ -1149,6 +1287,7 @@ export class GameComponent implements AfterViewInit, OnInit {
 
   // UI
   playerHealth = this.engine.playerHealth;
+  playerMana = this.engine.playerMana;
   damageNumbers = this.engine.damageNumbers;
   enemyUI = this.engine.enemyUI;
   gold = this.engine.gold;
@@ -1177,14 +1316,11 @@ export class GameComponent implements AfterViewInit, OnInit {
   inventorySort = signal<'level' | 'slot' | 'rarity' | 'value'>('rarity');
   hasSave = signal(false);
 
-  activeAttack = this.engine.activeAttack;
-  activeSpell = this.engine.activeSpell;
-  attackCooldownProgress = this.engine.attackCooldownProgress;
-  spellCooldownProgress = this.engine.spellCooldownProgress;
+  activeSkills = this.engine.activeSkills;
+  skillCooldownsProgress = this.engine.skillCooldownsProgress;
   linkedSupports = this.engine.linkedSupports;
   
-  attacks = Object.values(SKILL_REGISTRY).filter(s => s.category === 'attack');
-  spells = Object.values(SKILL_REGISTRY).filter(s => s.category === 'spell');
+  allSkills = Object.values(SKILL_REGISTRY).filter(s => s.category === 'attack' || s.category === 'spell');
   supports = Object.values(SKILL_REGISTRY).filter(s => s.category === 'support');
 
   gamblerSlots: ItemSlot[] = [
@@ -1195,8 +1331,30 @@ export class GameComponent implements AfterViewInit, OnInit {
   vendorUpgradeCost = computed(() => this.vendorLevel() * 1000);
   gambleCost = computed(() => this.stats().level * 50);
 
+  selectedSpellSlot = signal<number>(0);
+
+  assignSpell(skillId: string | null) {
+    this.engine.activeSkills.update(spells => {
+      const newSpells = [...spells];
+      newSpells[this.selectedSpellSlot()] = skillId;
+      return newSpells;
+    });
+  }
+
+  isSpellEquipped(skillId: string): boolean {
+    return this.activeSkills().includes(skillId);
+  }
+
   getSkillName(id: string): string {
     return SKILL_REGISTRY[id]?.name || id;
+  }
+
+  getSkillCategory(id: string): SkillCategory {
+    return SKILL_REGISTRY[id]?.category || 'spell';
+  }
+
+  getSkillTooltipStats(id: string) {
+    return this.engine.getSkillTooltipStats(id);
   }
 
   isLinked(skillId: string, supportId: string): boolean {
@@ -1253,18 +1411,39 @@ export class GameComponent implements AfterViewInit, OnInit {
     { key: 'strength', label: 'STR', colorClass: 'text-red-400' },
     { key: 'dexterity', label: 'DEX', colorClass: 'text-green-400' },
     { key: 'vitality', label: 'VIT', colorClass: 'text-orange-400' },
+    { key: 'maxHealth', label: 'MAX HP', colorClass: 'text-red-500' },
+    { key: 'maxMana', label: 'MAX MP', colorClass: 'text-blue-500' },
     { key: 'critChance', label: 'CRIT', colorClass: 'text-pink-400', isPercent: true },
     { key: 'critDamage', label: 'CRIT DMG', colorClass: 'text-pink-400', isPercent: true },
     { key: 'attackSpeed', label: 'ATK SPD', colorClass: 'text-yellow-400', isPercent: true },
     { key: 'castSpeed', label: 'CAST SPD', colorClass: 'text-pink-400', isPercent: true },
-    { key: 'lifeRegeneration', label: 'REGEN', colorClass: 'text-red-400' },
+    { key: 'lifeRegeneration', label: 'HP REGEN', colorClass: 'text-red-400' },
+    { key: 'manaRegeneration', label: 'MP REGEN', colorClass: 'text-blue-400' },
     { key: 'lifeLeechAttack', label: 'LEECH (ATK)', colorClass: 'text-red-500', isPercent: true },
     { key: 'lifeLeechSpell', label: 'LEECH (SPL)', colorClass: 'text-blue-500', isPercent: true },
     { key: 'fireResistance', label: 'FIRE RES', colorClass: 'text-orange-500' },
     { key: 'lightningResistance', label: 'LIGHTNING RES', colorClass: 'text-yellow-300' },
     { key: 'iceResistance', label: 'ICE RES', colorClass: 'text-cyan-400' },
-    { key: 'poisonResistance', label: 'POISON RES', colorClass: 'text-green-500' }
+    { key: 'poisonResistance', label: 'POISON RES', colorClass: 'text-green-500' },
+    { key: 'blockChance', label: 'BLOCK CHANCE', colorClass: 'text-blue-500', isPercent: true },
+    { key: 'evasion', label: 'EVASION', colorClass: 'text-cyan-500', isPercent: true }
   ];
+
+  getItemSet(setId?: string) {
+    if (!setId) return null;
+    return ITEM_SETS[setId];
+  }
+
+  getEquippedSetPiecesCount(setId?: string): number {
+    if (!setId) return 0;
+    let count = 0;
+    Object.values(this.equipped()).forEach(item => {
+      if (item && item.setId === setId) {
+        count++;
+      }
+    });
+    return count;
+  }
 
   getCompareItem(item: Item): Item | undefined {
     if (item.slot === ItemSlot.RING_1 || item.slot === ItemSlot.RING_2) {
@@ -1296,6 +1475,9 @@ export class GameComponent implements AfterViewInit, OnInit {
     if (event.key.toLowerCase() === 'i') {
       this.showInventory.update(v => !v);
     }
+    if (event.key.toLowerCase() === 'p' && this.currentRegion() === 'dungeon') {
+      this.returnToTown();
+    }
     if (event.key.toLowerCase() === 'v' && this.isNearVendor()) {
       this.showVendor.update(v => !v);
     }
@@ -1314,6 +1496,12 @@ export class GameComponent implements AfterViewInit, OnInit {
     if (event.key.toLowerCase() === 'k') {
       this.showSkills.update(v => !v);
     }
+
+    // Potion hotkeys
+    if (event.code === 'Digit1') this.usePotion(0);
+    if (event.code === 'Digit2') this.usePotion(1);
+    if (event.code === 'Digit3') this.usePotion(2);
+    if (event.code === 'Digit4') this.usePotion(3);
   }
 
   buyItem(item: Item) {
@@ -1416,6 +1604,10 @@ export class GameComponent implements AfterViewInit, OnInit {
 
   getPassiveNode(id: string): PassiveNode | undefined {
     return PASSIVE_TREE[id];
+  }
+
+  returnToTown() {
+    this.engine.returnToTown();
   }
 
   isConnectionActive(id1: string, id2: string): boolean {
@@ -1526,7 +1718,58 @@ export class GameComponent implements AfterViewInit, OnInit {
   }
 
   equip(item: Item) {
+    if (item.slot === ItemSlot.CONSUMABLE) {
+      // Find first empty potion slot
+      const currentPotions = [...this.engine.potions()];
+      const emptyIdx = currentPotions.findIndex(p => p === null);
+      if (emptyIdx !== -1) {
+        currentPotions[emptyIdx] = item;
+        this.engine.potions.set(currentPotions);
+        this.engine.inventory.update(inv => inv.filter(i => i.id !== item.id));
+        this.hoveredItem.set(null); // Clear tooltip
+      } else {
+        this.engine.spawnDamageNumber(this.engine.playerPos3D(), 'POTION SLOTS FULL', '#ff0000');
+      }
+      return;
+    }
     this.engine.equipItem(item);
+  }
+
+  usePotion(index: number) {
+    const currentPotions = [...this.engine.potions()];
+    const item = currentPotions[index];
+    if (!item) return;
+
+    if (item.consumableType === ConsumableType.HEALTH_POTION) {
+      this.engine.playerHealth.update(h => Math.min(this.engine.derivedStats().maxHealth, h + 50));
+      this.engine.spawnDamageNumber(this.engine.playerPos3D(), '+50 HP', '#00ff00');
+    } else if (item.consumableType === ConsumableType.MANA_POTION) {
+      this.engine.playerMana.update(m => Math.min(this.engine.derivedStats().intelligence * 10, m + 50));
+      this.engine.spawnDamageNumber(this.engine.playerPos3D(), '+50 MP', '#0044ff');
+    } else if (item.consumableType === ConsumableType.BLOCK_POTION) {
+      this.engine.activeBuffs.update(b => ({ ...b, blockChance: 30, blockExpire: Date.now() + 10000 }));
+      this.engine.spawnDamageNumber(this.engine.playerPos3D(), 'BLOCK UP!', '#3b82f6');
+    } else if (item.consumableType === ConsumableType.EVADE_POTION) {
+      this.engine.activeBuffs.update(b => ({ ...b, evadeChance: 30, evadeExpire: Date.now() + 10000 }));
+      this.engine.spawnDamageNumber(this.engine.playerPos3D(), 'EVADE UP!', '#cccccc');
+    }
+
+    currentPotions[index] = null;
+    this.engine.potions.set(currentPotions);
+  }
+
+  unequipPotion(index: number) {
+    const currentPotions = [...this.engine.potions()];
+    const item = currentPotions[index];
+    if (item) {
+      if (this.engine.inventory().length < 20) {
+        this.engine.inventory.update(inv => [...inv, item]);
+        currentPotions[index] = null;
+        this.engine.potions.set(currentPotions);
+      } else {
+        this.engine.spawnDamageNumber(this.engine.playerPos3D(), 'INVENTORY FULL', '#ff0000');
+      }
+    }
   }
 
   unequip(slot: ItemSlot) {

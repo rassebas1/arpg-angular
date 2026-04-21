@@ -29,6 +29,9 @@ export class Enemy {
   public id = Math.random().toString(36).substr(2, 9);
   public type: EnemyType;
   public mesh: THREE.Group;
+  public lod!: THREE.LOD;
+  public coreMesh!: THREE.Mesh;
+  public shellMesh!: THREE.Mesh;
   public body: RAPIER.RigidBody;
   public maxHealth = 100;
   public health = 100;
@@ -128,22 +131,48 @@ export class Enemy {
 
     // Visuals
     this.mesh = new THREE.Group();
+    this.lod = new THREE.LOD();
     
-    // Glowing Core
-    const coreGeom = new THREE.OctahedronGeometry(0.4 * scale, 0);
+    // --- LOD 0: High Detail ---
+    const highDetailGroup = new THREE.Group();
+    const coreGeom = new THREE.OctahedronGeometry(0.4 * scale, 1);
     const coreMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.5 });
-    const core = new THREE.Mesh(coreGeom, coreMat);
-    core.position.y = 0.6 * scale;
-    core.castShadow = true;
-    this.mesh.add(core);
+    this.coreMesh = new THREE.Mesh(coreGeom, coreMat);
+    this.coreMesh.position.y = 0.6 * scale;
+    this.coreMesh.castShadow = true;
+    highDetailGroup.add(this.coreMesh);
 
-    // Wireframe Shell
-    const shellGeom = new THREE.OctahedronGeometry(0.6 * scale, 1);
+    const shellGeom = new THREE.OctahedronGeometry(0.6 * scale, 2);
     const shellMat = new THREE.MeshStandardMaterial({ color: 0x222222, wireframe: true, transparent: true, opacity: 0.5 });
-    const shell = new THREE.Mesh(shellGeom, shellMat);
-    shell.position.y = 0.6 * scale;
-    this.mesh.add(shell);
+    this.shellMesh = new THREE.Mesh(shellGeom, shellMat);
+    this.shellMesh.position.y = 0.6 * scale;
+    highDetailGroup.add(this.shellMesh);
+    
+    this.lod.addLevel(highDetailGroup, 0);
 
+    // --- LOD 1: Medium Detail ---
+    const medDetailGroup = new THREE.Group();
+    const medGeom = new THREE.OctahedronGeometry(0.6 * scale, 0); // simpler geometry
+    const medMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 });
+    const medMesh = new THREE.Mesh(medGeom, medMat);
+    medMesh.position.y = 0.6 * scale;
+    medMesh.castShadow = true;
+    medDetailGroup.add(medMesh);
+    
+    this.lod.addLevel(medDetailGroup, 40);
+
+    // --- LOD 2: Billboard (Very Low Detail) ---
+    const lowDetailGroup = new THREE.Group();
+    // Sprite always faces the camera and drops complex geometry/lighting rendering
+    const spriteMat = new THREE.SpriteMaterial({ color: color });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.position.y = 0.6 * scale;
+    sprite.scale.set(scale, scale * 1.5, 1);
+    lowDetailGroup.add(sprite);
+
+    this.lod.addLevel(lowDetailGroup, 80);
+
+    this.mesh.add(this.lod);
     this.mesh.position.copy(position);
     this.scene.add(this.mesh);
 
@@ -220,7 +249,7 @@ export class Enemy {
     }
   }
 
-  update(playerPos: THREE.Vector3, deltaTime: number) {
+  update(playerPos: THREE.Vector3, deltaTime: number, camera?: THREE.Camera) {
     // Process status effects
     let speedMult = 1.0;
     let damageTakenMult = 1.0;
@@ -277,17 +306,15 @@ export class Enemy {
           (this.aoeIndicator.material as THREE.MeshBasicMaterial).opacity = progress * 0.4;
         }
         
-        const core = this.mesh.children[0] as THREE.Mesh;
-        if (core && core.material) {
-           (core.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5 + progress * 5;
+        if (this.coreMesh && this.coreMesh.material) {
+           (this.coreMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5 + progress * 5;
         }
       } else {
         if (this.aoeIndicator) {
           (this.aoeIndicator.material as THREE.MeshBasicMaterial).opacity = 0;
         }
-        const core = this.mesh.children[0] as THREE.Mesh;
-        if (core && core.material) {
-           (core.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5;
+        if (this.coreMesh && this.coreMesh.material) {
+           (this.coreMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5;
         }
       }
 
@@ -409,12 +436,14 @@ export class Enemy {
     }
 
     // Animate mesh parts
-    const core = this.mesh.children[0];
-    const shell = this.mesh.children[1];
-    if (core) core.rotation.y += deltaTime * (isWindingUp ? 10 : 2);
-    if (shell) {
-      shell.rotation.y -= deltaTime * (isWindingUp ? 5 : 1);
-      shell.rotation.x += deltaTime * (isWindingUp ? 2.5 : 0.5);
+    if (this.coreMesh) this.coreMesh.rotation.y += deltaTime * (isWindingUp ? 10 : 2);
+    if (this.shellMesh) {
+      this.shellMesh.rotation.y -= deltaTime * (isWindingUp ? 5 : 1);
+      this.shellMesh.rotation.x += deltaTime * (isWindingUp ? 2.5 : 0.5);
+    }
+
+    if (camera) {
+      this.lod.update(camera);
     }
 
     // Sync mesh

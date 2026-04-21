@@ -22,7 +22,8 @@ export enum WeaponType {
   BOW = 'bow',
   STAFF = 'staff',
   WAND = 'wand',
-  SPELLBLADE = 'spellblade'
+  SPELLBLADE = 'spellblade',
+  SHIELD = 'shield'
 }
 
 export enum ItemSlot {
@@ -38,7 +39,15 @@ export enum ItemSlot {
   NECKLACE = 'necklace',
   RING_1 = 'ring_1',
   RING_2 = 'ring_2',
-  EARRING = 'earring'
+  EARRING = 'earring',
+  CONSUMABLE = 'consumable'
+}
+
+export enum ConsumableType {
+  HEALTH_POTION = 'health_potion',
+  MANA_POTION = 'mana_potion',
+  BLOCK_POTION = 'block_potion',
+  EVADE_POTION = 'evade_potion'
 }
 
 export interface ItemStats {
@@ -53,6 +62,7 @@ export interface ItemStats {
   critDamage?: number;
   attackSpeed?: number;
   castSpeed?: number;
+  manaRegeneration?: number;
   lifeRegeneration?: number;
   lifeLeechAttack?: number;
   lifeLeechSpell?: number;
@@ -60,6 +70,10 @@ export interface ItemStats {
   lightningResistance?: number;
   iceResistance?: number;
   poisonResistance?: number;
+  blockChance?: number;
+  evasion?: number;
+  maxHealth?: number;
+  maxMana?: number;
 }
 
 export interface Item {
@@ -70,12 +84,55 @@ export interface Item {
   level: number;
   isTwoHanded?: boolean;
   weaponType?: WeaponType;
+  consumableType?: ConsumableType;
   goldValue: number;
   stats: ItemStats;
   corrupted?: boolean;
   sockets?: number;
   imprinted?: boolean;
+  setId?: string;
 }
+
+export interface SetBonus {
+  piecesRequired: number;
+  stats: ItemStats;
+}
+
+export interface ItemSet {
+  id: string;
+  name: string;
+  bonuses: SetBonus[];
+}
+
+export const ITEM_SETS: Record<string, ItemSet> = {
+  'warlord': {
+    id: 'warlord',
+    name: "Warlord's",
+    bonuses: [
+      { piecesRequired: 2, stats: { maxHealth: 50, vitality: 10 } },
+      { piecesRequired: 4, stats: { strength: 20, attack: 15 } },
+      { piecesRequired: 6, stats: { lifeLeechAttack: 5, attackSpeed: 20 } }
+    ]
+  },
+  'archmage': {
+    id: 'archmage',
+    name: "Archmage's",
+    bonuses: [
+      { piecesRequired: 2, stats: { maxMana: 50, intelligence: 10 } },
+      { piecesRequired: 4, stats: { castSpeed: 20, manaRegeneration: 10 } },
+      { piecesRequired: 6, stats: { lifeLeechSpell: 5, evasion: 20 } }
+    ]
+  },
+  'assassin': {
+    id: 'assassin',
+    name: "Assassin's",
+    bonuses: [
+      { piecesRequired: 2, stats: { speed: 10, dexterity: 10 } },
+      { piecesRequired: 4, stats: { critChance: 10, critDamage: 50 } },
+      { piecesRequired: 6, stats: { evasion: 30, attackSpeed: 30 } }
+    ]
+  }
+};
 
 export const RARITY_COLORS = {
   [Rarity.COMMON]: '#ffffff',
@@ -110,7 +167,43 @@ export class LootManager {
       }
     }
 
-    const slots = Object.values(ItemSlot);
+    let isSetItem = false;
+    let setId: string | undefined = undefined;
+    
+    // 5% chance to roll a set item if not forcing a specific rarity other than Rare/Epic/Legendary
+    if (!forceRarity && Math.random() < 0.05) {
+      isSetItem = true;
+      rarity = Rarity.LEGENDARY; // Set items are legendary tier
+      rarityIndex = 4;
+      
+      const setKeys = Object.keys(ITEM_SETS);
+      setId = setKeys[Math.floor(Math.random() * setKeys.length)];
+    }
+
+    const slots = Object.values(ItemSlot).filter(s => s !== ItemSlot.CONSUMABLE);
+    
+    // 20% chance to drop a consumable if not forced
+    if (!forceSlot && Math.random() < 0.20) {
+      const cTypes = Object.values(ConsumableType);
+      const cType = cTypes[Math.floor(Math.random() * cTypes.length)];
+      
+      let pName = 'Health Potion';
+      if (cType === ConsumableType.MANA_POTION) pName = 'Mana Potion';
+      if (cType === ConsumableType.BLOCK_POTION) pName = 'Block Potion';
+      if (cType === ConsumableType.EVADE_POTION) pName = 'Evade Potion';
+      
+      return {
+        id: `consumable_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        name: pName,
+        rarity: Rarity.COMMON,
+        slot: ItemSlot.CONSUMABLE,
+        consumableType: cType,
+        level: level,
+        goldValue: 10 * level,
+        stats: {} // Potions don't use equip stats
+      };
+    }
+    
     const slot = forceSlot || slots[Math.floor(Math.random() * slots.length)];
 
     const prefixes = ['Rusty', 'Sharp', 'Ancient', 'Glowing', 'Cursed', 'Divine', 'Heavy', 'Light'];
@@ -126,13 +219,31 @@ export class LootManager {
 
     if (slot === ItemSlot.MAIN_HAND || slot === ItemSlot.OFF_HAND) {
       itemCategory = 'weapon';
-      const weapons = Object.values(WeaponType);
-      weaponType = weapons[Math.floor(Math.random() * weapons.length)];
+      const weapons = Object.values(WeaponType).filter(w => w !== WeaponType.SHIELD);
+      
+      if (slot === ItemSlot.OFF_HAND) {
+        // Offhand can be shield or specific offhand weapons. Let's just give it a chance to be a shield
+        if (Math.random() > 0.5) {
+          weaponType = WeaponType.SHIELD;
+        } else {
+          weaponType = weapons[Math.floor(Math.random() * weapons.length)];
+        }
+      } else {
+        weaponType = weapons[Math.floor(Math.random() * weapons.length)];
+      }
+
       typeName = weaponType.charAt(0).toUpperCase() + weaponType.slice(1);
-      stats.attack = Math.floor((Math.random() * 10 * level + 5) * rollMultiplier);
-      if (weaponType === WeaponType.GREATSWORD || weaponType === WeaponType.BOW || weaponType === WeaponType.STAFF) {
-        isTwoHanded = true;
-        stats.attack = Math.floor(stats.attack * 1.5);
+      
+      if (weaponType === WeaponType.SHIELD) {
+        stats.defense = Math.floor((Math.random() * 8 * level + 5) * rollMultiplier);
+        // Base block chance between 10% and 30%
+        stats.blockChance = Math.floor(10 + Math.random() * 20);
+      } else {
+        stats.attack = Math.floor((Math.random() * 10 * level + 5) * rollMultiplier);
+        if (weaponType === WeaponType.GREATSWORD || weaponType === WeaponType.BOW || weaponType === WeaponType.STAFF) {
+          isTwoHanded = true;
+          stats.attack = Math.floor(stats.attack * 1.5);
+        }
       }
     } else if ([ItemSlot.NECKLACE, ItemSlot.RING_1, ItemSlot.RING_2, ItemSlot.EARRING].includes(slot)) {
       itemCategory = 'jewelry';
@@ -162,11 +273,18 @@ export class LootManager {
     const numExtraStats = rarityIndex; // COMMON = 0, UNCOMMON = 1, RARE = 2, EPIC = 3, LEGENDARY = 4
     
     const weaponPool: (keyof ItemStats)[] = ['strength', 'dexterity', 'intelligence', 'critChance', 'critDamage', 'attackSpeed', 'castSpeed', 'lifeLeechAttack', 'lifeLeechSpell'];
-    const armorPool: (keyof ItemStats)[] = ['strength', 'dexterity', 'intelligence', 'vitality', 'speed', 'lifeRegeneration', 'fireResistance', 'lightningResistance', 'iceResistance', 'poisonResistance'];
-    const jewelryPool: (keyof ItemStats)[] = ['critChance', 'critDamage', 'attackSpeed', 'castSpeed', 'strength', 'dexterity', 'intelligence', 'vitality', 'lifeRegeneration', 'fireResistance', 'lightningResistance', 'iceResistance', 'poisonResistance'];
+    const armorPool: (keyof ItemStats)[] = ['strength', 'dexterity', 'intelligence', 'vitality', 'speed', 'lifeRegeneration', 'manaRegeneration', 'fireResistance', 'lightningResistance', 'iceResistance', 'poisonResistance', 'evasion'];
+    const jewelryPool: (keyof ItemStats)[] = ['critChance', 'critDamage', 'attackSpeed', 'castSpeed', 'strength', 'dexterity', 'intelligence', 'vitality', 'lifeRegeneration', 'manaRegeneration', 'fireResistance', 'lightningResistance', 'iceResistance', 'poisonResistance', 'evasion'];
+    const shieldPool: (keyof ItemStats)[] = ['strength', 'vitality', 'lifeRegeneration', 'fireResistance', 'lightningResistance', 'iceResistance', 'poisonResistance', 'blockChance', 'evasion'];
     
     let pool = armorPool;
-    if (itemCategory === 'weapon') pool = weaponPool;
+    if (itemCategory === 'weapon') {
+      if (weaponType === WeaponType.SHIELD) {
+        pool = shieldPool;
+      } else {
+        pool = weaponPool;
+      }
+    }
     if (itemCategory === 'jewelry') pool = jewelryPool;
 
     // Shuffle pool to pick unique random stats
@@ -200,8 +318,13 @@ export class LootManager {
         case 'poisonResistance':
           stats[statName] = (stats[statName] || 0) + Math.floor((Math.random() * 15 + 5) * rollMultiplier); // 5-20 resistance
           break;
+        case 'blockChance':
+        case 'evasion':
+          stats[statName] = (stats[statName] || 0) + Math.floor((Math.random() * 10 + 2) * rollMultiplier);
+          break;
         case 'lifeRegeneration':
-          stats.lifeRegeneration = (stats.lifeRegeneration || 0) + Math.floor((Math.random() * 5 * level + 1) * rollMultiplier);
+        case 'manaRegeneration':
+          stats[statName] = (stats[statName] || 0) + Math.floor((Math.random() * 5 * level + 1) * rollMultiplier);
           break;
         default:
           stats[statName] = (stats[statName] || 0) + Math.floor((Math.random() * 4 * level + 1) * rollMultiplier);
@@ -209,7 +332,11 @@ export class LootManager {
       }
     }
 
-    const name = `${prefixes[Math.floor(Math.random() * prefixes.length)]} ${typeName}`;
+    let name = `${prefixes[Math.floor(Math.random() * prefixes.length)]} ${typeName}`;
+    if (isSetItem && setId) {
+      name = `${ITEM_SETS[setId].name} ${typeName}`;
+    }
+
     const goldValue = Math.floor((Math.random() * 10 * level + (rarityIndex * 20) + 5) * rollMultiplier);
 
     return {
@@ -221,7 +348,8 @@ export class LootManager {
       isTwoHanded,
       weaponType,
       goldValue,
-      stats
+      stats,
+      setId
     };
   }
 }
